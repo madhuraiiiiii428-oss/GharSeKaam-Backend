@@ -1,0 +1,237 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id           String     @id @default(uuid())
+  title        String
+  image        String
+  shopkeeper   Shopkeeper @relation(fields: [shopkeeperId], references: [id])
+  shopkeeperId String
+  items        Item[]
+  createdAt    DateTime   @default(now())
+}
+
+enum Unit {
+  PIECE
+  KG
+  LITRE
+  GRAM
+  PACK
+  BAG
+  CFT
+  TON
+  TROLLEY
+  BRASS
+  BUNDLE
+  TRUCK
+  OTHER
+}
+
+model Item {
+  id              String      @id @default(uuid())
+  title           String
+  images          String[]    @db.VarChar(255)
+  wholesaleprice  Decimal?    @db.Decimal(10, 2)
+  retailprice     Decimal?    @db.Decimal(10, 2)
+  unit            Unit
+  minimumpurchase Int         @default(0)
+  description     String
+  currentQty      Int
+  warranty        String?
+  availability    String?     @default("In Stock")
+  addons          String[]
+  discount        Float?
+  variants        Json?       // NEW: variants JSON column
+  shopkeeper      Shopkeeper  @relation(fields: [shopkeeperId], references: [id])
+  shopkeeperId    String
+  category        Category    @relation(fields: [categoryId], references: [id])
+  categoryId      String
+  orderItems      OrderItem[]
+  createdAt       DateTime    @default(now())
+}
+
+model Order {
+  id                String      @id @default(uuid())
+  customer          Customer    @relation(fields: [customerId], references: [id])
+  customerId        String
+  shopkeeper        Shopkeeper  @relation(fields: [shopkeeperId], references: [id])
+  shopkeeperId      String
+  paymentType       PaymentType
+  orderItems        OrderItem[] // RENAMED from `items`
+  totalPrice        Decimal     @db.Decimal(12, 2)
+  status            OrderStatus @default(PROCESSING)
+  deliveryAddress   Address?    @relation(fields: [deliveryAddressId], references: [id]) // NEW
+  deliveryAddressId String? // NEW
+  estimatedDelivery String?     @default("Within 2-3 hours")
+  deliveryGuyId     String?
+  deliveryGuy       DeliveryGuy? @relation(fields: [deliveryGuyId], references: [id])
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  order     Order   @relation(fields: [orderId], references: [id])
+  orderId   String
+  item      Item    @relation(fields: [itemId], references: [id])
+  itemId    String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  lineTotal Decimal @db.Decimal(12, 2)
+  variants  Json?   // NEW: selected variant for this order item
+}
+
+enum DeliveryStatus {
+  PENDING
+  ASSIGNED
+  ACCEPTED
+  REJECTED
+  DELIVERED
+}
+
+enum OrderStatus {
+  PROCESSING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  DELIVERY_PICKUP
+  DELIVERED
+}
+
+enum CustomerType {
+  WHOLESALER
+  RETAILER
+}
+
+enum PaymentType {
+  COD
+  CASH
+  ONLINE
+}
+
+model DeliveryGuy {
+  id        String            @id @default(uuid())
+  userid    String            @unique
+  user      User              @relation(fields: [userid], references: [googleid])
+  address   String?
+  orders    Order[]
+  status    DeliveryGuyStatus @default(AVAILABLE)
+  createdAt DateTime          @default(now())
+}
+
+enum DeliveryGuyStatus {
+  AVAILABLE
+  BUSY
+  INACTIVE
+}
+
+model User {
+  googleid     String      @id @unique
+  createdAt    DateTime    @default(now())
+  email        String      @unique
+  name         String?
+  phone        String?
+  profileimage String
+  customer     Customer?
+  shopkeeper   Shopkeeper?
+  deliveryGuy  DeliveryGuy?
+}
+
+model Customer {
+  id           String       @id @default(uuid())
+  createdAt    DateTime     @default(now())
+  userid       String       @unique
+  Shopname     String?      @unique
+  Shopnumber    String?
+  GSTnumber    String?      @unique
+  Adhaarnumber  String?      @unique
+  user         User         @relation(fields: [userid], references: [googleid])
+  houseaddress Address[]
+  type         CustomerType @default(RETAILER)
+  orders       Order[]
+}
+
+model Shopkeeper {
+  id          String     @id @default(uuid())
+  createdAt   DateTime   @default(now())
+  userid      String     @unique
+  shopname    String
+  user        User       @relation(fields: [userid], references: [googleid])
+  shopaddress Address[]
+  category    Category[]
+  Item        Item[]
+  orders      Order[]
+  shopImages  ShopkeeperImage[]
+}
+
+model ShopkeeperImage {
+  id            String     @id @default(uuid())
+  shopkeeper    Shopkeeper @relation(fields: [shopkeeperId], references: [id])
+  shopkeeperId  String
+  imageurl      String
+  description   String?
+  uploadedAt    DateTime   @default(now())
+}
+
+model Address {
+  id           String      @id @unique @default(uuid())
+  city         String
+  state        String
+  latitude     Decimal?    @db.Decimal(10, 7)
+  longitude    Decimal?    @db.Decimal(10, 7)
+  pincode      String
+  flatnumber   String
+  landmark     String?
+  building     String?
+  street       String?
+  area         String?
+  customerid   String?
+  shopkeeperid String?
+  customer     Customer?   @relation(fields: [customerid], references: [id])
+  shopkeeper   Shopkeeper? @relation(fields: [shopkeeperid], references: [id])
+  orders       Order[] // NEW: reverse relation
+}
+
+model LabourService {
+  id         String          @id @default(uuid())
+  categoryId String          @unique // e.g. "mason", "electrician", etc.
+  title      String
+  subtitle   String
+  rate       Int
+  unit       String          @default("per day")
+  badge      String?
+  skills     String[]
+  rating     Float           @default(5.0)
+  reviews    Int             @default(0)
+  updatedAt  DateTime        @updatedAt
+  bookings   LabourBooking[]
+}
+
+model LabourBooking {
+  id              String        @id @default(uuid())
+  name            String
+  phone           String
+  address         String
+  date            String
+  days            Int           @default(1)
+  quantity        Int           @default(1)
+  totalCost       Int
+  status          String        @default("PENDING") // PENDING, ACCEPTED, COMPLETED, CANCELLED
+  labourService   LabourService @relation(fields: [labourServiceId], references: [id])
+  labourServiceId String
+  createdAt       DateTime      @default(now())
+}
+

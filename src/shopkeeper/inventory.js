@@ -1,0 +1,517 @@
+import { Router } from "express";
+import { prisma } from '../../config/prismaConfig.js';
+import { userMiddleware } from "../../middlewares/userAuth.js";
+import cloudinary from '../../config/cloudinary.js';
+import multer from 'multer';
+import { shopkeeperMiddleware } from "../../middlewares/shopkeeperAuth.js";
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure the local uploads directory exists
+const rootUploadsDir = path.join(__dirname, '../../uploads');
+if (!fs.existsSync(rootUploadsDir)) {
+    fs.mkdirSync(rootUploadsDir, { recursive: true });
+}
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+export const inventoryRouter = Router();
+
+// Helper to upload a single image buffer to both local folder and cloudinary
+async function uploadImageBuffer(buffer, originalname = 'image.jpg', req = null) {
+    const ext = path.extname(originalname) || '.jpg';
+    const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    const localPath = path.join(rootUploadsDir, filename);
+
+    // Save locally
+    try {
+        await fs.promises.writeFile(localPath, buffer);
+    } catch (e) {
+        console.error("Local file save failed:", e);
+    }
+
+    // Local fallback/concurrent URL
+    let localUrl = `/uploads/${filename}`;
+    if (req) {
+        localUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
+    }
+
+    // Try Cloudinary
+    return new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream({ folder: 'buildmart' }, (err, result) => {
+            if (err) {
+                console.error("Cloudinary upload failed, using local URL fallback:", err);
+                return resolve(localUrl); // Fallback to local URL on failure
+            }
+            resolve(result.secure_url);
+        }).end(buffer);
+    });
+}
+
+// Helper to upload multiple image buffers to both local folder and cloudinary
+async function uploadImageBuffers(files, req = null) {
+    const urls = [];
+    for (const file of files) {
+        const url = await uploadImageBuffer(file.buffer, file.originalname, req);
+        urls.push(url);
+    }
+    return urls;
+}
+
+// Helper to safely parse addons input into a String array
+function parseAddons(addons) {
+    if (!addons) return [];
+    if (Array.isArray(addons)) return addons;
+    if (typeof addons === 'string') {
+        try {
+            const parsed = JSON.parse(addons);
+            if (Array.isArray(parsed)) return parsed.map(String);
+        } catch (e) {
+            // Ignore JSON parse error, treat as raw comma-separated string
+        }
+        return addons.split(',').map(item => item.trim()).filter(Boolean);
+    }
+    return [];
+}
+
+function safeParseFloat(val, fallback = null) {
+    if (val === undefined || val === null || val === '') return fallback;
+    const parsed = parseFloat(val);
+    return isNaN(parsed) ? fallback : parsed;
+}
+
+function safeParseInt(val, fallback = 0) {
+    if (val === undefined || val === null || val === '') return fallback;
+    const parsed = parseInt(val, 10);
+    return isNaN(parsed) ? fallback : parsed;
+}
+
+
+// Create a new category (with image file OR image URL)
+inventoryRouter.post('/category', shopkeeperMiddleware, upload.single('image'), async (req, res) => {
+    const { title, imageUrl } = req.body;
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const shopkeeper = await prisma.shopkeeper.findUnique({ where: { id: shopkeeperid } });
+        if (!shopkeeper) return res.status(404).json({ success: false, message: "Shopkeeper not found" });
+        
+        let imageUrlFinal;
+        if (req.file) {
+            imageUrlFinal = await uploadImageBuffer(req.file.buffer, req.file.originalname, req);
+        } else if (imageUrl) {
+            imageUrlFinal = imageUrl;
+        } else {
+            return res.status(400).json({ success: false, message: "Image file or image URL is required" });
+        }
+        
+        const category = await prisma.category.create({
+            data: {
+                title,
+                image: imageUrlFinal,
+                shopkeeperId: shopkeeper.id
+            }
+        });
+        res.status(201).json({ success: true, category });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});
+
+// Update category (title/image file)
+inventoryRouter.put('/category/:id', shopkeeperMiddleware, upload.single('image'), async (req, res) => {
+    const { title } = req.body;
+    const { id } = req.params;
+    try {
+        let updateData = {};
+        if (title) updateData.title = title;
+        if (req.file) updateData.image = await uploadImageBuffer(req.file.buffer, req.file.originalname, req);
+        const category = await prisma.category.update({
+            where: { id },
+            data: updateData
+        });
+        res.status(200).json({ success: true, category });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});
+
+// Delete a category
+inventoryRouter.delete('/category/:id', shopkeeperMiddleware, async (req, res) => {
+    const { id } = req.params;
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const category = await prisma.category.findUnique({ where: { id } });
+        if (!category) return res.status(404).json({ success: false, message: 'Category not found' });
+        if (category.shopkeeperId !== shopkeeperid) return res.status(403).json({ success: false, message: 'Not authorized to delete this category' });
+        
+        await prisma.category.delete({ where: { id } });
+        res.status(200).json({ success: true, message: 'Category deleted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Something went wrong. Ensure this category has no active items linked.' });
+    }
+});
+
+// Add item under a category (with up to 5 image files OR image URLs)
+inventoryRouter.post('/item', shopkeeperMiddleware, upload.array('images', 5), async (req, res) => {
+    const { title, wholesaleprice, unit, description, availability, currentQty, warranty, addons, discount, categoryId, retailprice, minimumpurchase=0, variants, imageUrls } = req.body;
+    console.log(req.body);
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const shopkeeper = await prisma.shopkeeper.findUnique({ where: { id: shopkeeperid } });
+        if (!shopkeeper) return res.status(404).json({ success: false, message: "Shopkeeper not found" });
+        
+        let finalImageUrls = [];
+        if (req.files && req.files.length > 0) {
+            finalImageUrls = await uploadImageBuffers(req.files, req);
+        }
+        // Also accept direct image URLs
+        if (imageUrls) {
+            const urlList = Array.isArray(imageUrls) ? imageUrls : [imageUrls];
+            finalImageUrls = [...finalImageUrls, ...urlList.filter(Boolean)];
+        }
+        if (finalImageUrls.length < 1 || finalImageUrls.length > 5) {
+            return res.status(400).json({ success: false, message: "You must provide between 1 and 5 images (files or URLs)." });
+        }
+
+        // Validate variants if provided
+        let variantsData = undefined;
+        if (variants) {
+            try {
+                variantsData = JSON.parse(variants);
+                if (!Array.isArray(variantsData)) {
+                    return res.status(400).json({ success: false, message: "Variants must be an array." });
+                }
+                for (const v of variantsData) {
+                    if (!v.size) {
+                        return res.status(400).json({ success: false, message: "Each variant must have a size." });
+                    }
+                    if (v.price !== undefined && v.price !== null && typeof v.price !== 'number') {
+                        return res.status(400).json({ success: false, message: "Variant price must be a number." });
+                    }
+                    if (v.wholesaleprice !== undefined && v.wholesaleprice !== null && typeof v.wholesaleprice !== 'number') {
+                        return res.status(400).json({ success: false, message: "Variant wholesaleprice must be a number." });
+                    }
+                    if ((v.price === undefined || v.price === null) && (v.wholesaleprice === undefined || v.wholesaleprice === null)) {
+                        return res.status(400).json({ success: false, message: "Each variant must have at least a retail price or wholesale price." });
+                    }
+                }
+            } catch (e) {
+                return res.status(400).json({ success: false, message: "Invalid variants JSON." });
+            }
+        }
+
+        const item = await prisma.item.create({
+            data: {
+                title,
+                minimumpurchase : safeParseInt(minimumpurchase, 0),
+                images: finalImageUrls,
+                wholesaleprice: safeParseFloat(wholesaleprice, null),
+                retailprice: safeParseFloat(retailprice, null),
+                unit,
+                availability,
+                description,
+                currentQty: safeParseInt(currentQty, 0),
+                warranty: (warranty === '' || warranty === null) ? null : warranty,
+                addons: parseAddons(addons),
+                discount: safeParseFloat(discount, null),
+                shopkeeperId: shopkeeper.id,
+                categoryId,
+                variants: variantsData ? variantsData : undefined
+            }
+        });
+        res.status(201).json({ success: true, item });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});
+
+// Shopkeeper images CRUD (ShopkeeperImage model)
+inventoryRouter.post('/shop-image', shopkeeperMiddleware, upload.single('image'), async (req, res) => {
+    const { description } = req.body;
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const shopkeeper = await prisma.shopkeeper.findUnique({ where: { id: shopkeeperid } });
+        if (!shopkeeper) return res.status(404).json({ success: false, message: "Shopkeeper not found" });
+        if (!req.file) return res.status(400).json({ success: false, message: "Image file is required" });
+        const imageurl = await uploadImageBuffer(req.file.buffer, req.file.originalname, req);
+        const shopImage = await prisma.shopkeeperImage.create({
+            data: {
+                imageurl,
+                description,
+                shopkeeperId: shopkeeper.id
+            }
+        });
+        res.status(201).json({ success: true, shopImage });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});
+
+// Get all shop images public for current shopkeeper
+inventoryRouter.get('/shop-images', shopkeeperMiddleware, async (req, res) => {
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const shopkeeper = await prisma.shopkeeper.findUnique({ where: { id: shopkeeperid } });
+        if (!shopkeeper) return res.status(404).json({ success: false, message: "Shopkeeper not found" });
+        const images = await prisma.shopkeeperImage.findMany({
+            where: { shopkeeperId: shopkeeper.id },
+            select: { id: true, imageurl: true, description: true, uploadedAt: true }
+        });
+        res.status(200).json({ success: true, images });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});
+
+// Get single shop image by id
+inventoryRouter.get('/shop-image/:id', shopkeeperMiddleware, async (req, res) => {
+    const { id } = req.params;
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const image = await prisma.shopkeeperImage.findUnique({ where: { id } });
+        if (!image) return res.status(404).json({ success: false, message: 'Shop image not found' });
+        if (image.shopkeeperId !== shopkeeperid) return res.status(403).json({ success: false, message: 'Not authorized to view this image' });
+        res.status(200).json({ success: true, image });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Something went wrong' });
+    }
+});
+
+// Update shop image (description and/or replace image)
+inventoryRouter.put('/shop-image/:id', shopkeeperMiddleware, upload.single('image'), async (req, res) => {
+    const { id } = req.params;
+    const { description } = req.body;
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const existing = await prisma.shopkeeperImage.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ success: false, message: 'Shop image not found' });
+        if (existing.shopkeeperId !== shopkeeperid) return res.status(403).json({ success: false, message: 'Not authorized to update this image' });
+        const updateData = {};
+        if (description !== undefined) updateData.description = description;
+        if (req.file) updateData.imageurl = await uploadImageBuffer(req.file.buffer, req.file.originalname, req);
+        const updated = await prisma.shopkeeperImage.update({ where: { id }, data: updateData });
+        res.status(200).json({ success: true, updated });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Something went wrong' });
+    }
+});
+
+// Delete a shop image
+inventoryRouter.delete('/shop-image/:id', shopkeeperMiddleware, async (req, res) => {
+    const { id } = req.params;
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const existing = await prisma.shopkeeperImage.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ success: false, message: 'Shop image not found' });
+        if (existing.shopkeeperId !== shopkeeperid) return res.status(403).json({ success: false, message: 'Not authorized to delete this image' });
+        await prisma.shopkeeperImage.delete({ where: { id } });
+        res.status(200).json({ success: true, message: 'Shop image deleted' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Something went wrong' });
+    }
+});
+
+// Update item (fields and images)
+inventoryRouter.put('/item/:id', shopkeeperMiddleware, upload.array('images', 5), async (req, res) => {
+    const { availability, minimumpurchase, title, wholesaleprice, retailprice, unit, description, currentQty, warranty, addons, discount, categoryId, variants, imageUrls } = req.body;
+    const { id } = req.params;
+    try {
+        fs.writeFileSync(path.join(__dirname, '../../request_debug.json'), JSON.stringify({
+            body: req.body,
+            files: req.files ? req.files.map(f => ({ originalname: f.originalname, size: f.size })) : []
+        }, null, 2));
+        let updateData = {};
+        // parse and validate variants if provided
+        let variantsData = undefined;
+        if (variants) {
+            try {
+                variantsData = JSON.parse(variants);
+                if (!Array.isArray(variantsData)) {
+                    return res.status(400).json({ success: false, message: "Variants must be an array." });
+                }
+                for (const v of variantsData) {
+                    if (!v.size) {
+                        return res.status(400).json({ success: false, message: "Each variant must have a size." });
+                    }
+                    if (v.price !== undefined && v.price !== null && typeof v.price !== 'number') {
+                        return res.status(400).json({ success: false, message: "Variant price must be a number." });
+                    }
+                    if (v.wholesaleprice !== undefined && v.wholesaleprice !== null && typeof v.wholesaleprice !== 'number') {
+                        return res.status(400).json({ success: false, message: "Variant wholesaleprice must be a number." });
+                    }
+                    if ((v.price === undefined || v.price === null) && (v.wholesaleprice === undefined || v.wholesaleprice === null)) {
+                        return res.status(400).json({ success: false, message: "Each variant must have at least a retail price or wholesale price." });
+                    }
+                }
+            } catch (e) {
+                return res.status(400).json({ success: false, message: "Invalid variants JSON." });
+            }
+        }
+
+        if (title) updateData.title = title;
+        if (availability) updateData.availability = availability;
+        let finalImageUrls = [];
+        if (req.files && req.files.length > 0) {
+            finalImageUrls = await uploadImageBuffers(req.files, req);
+        }
+        if (imageUrls) {
+            const urlList = Array.isArray(imageUrls) ? imageUrls : [imageUrls];
+            finalImageUrls = [...finalImageUrls, ...urlList.filter(Boolean)];
+        }
+        if ((req.files && req.files.length > 0) || imageUrls) {
+            if (finalImageUrls.length < 1 || finalImageUrls.length > 5) {
+                return res.status(400).json({ success: false, message: "You must provide between 1 and 5 images (files or URLs)." });
+            }
+            updateData.images = finalImageUrls;
+        }
+        if (wholesaleprice !== undefined) updateData.wholesaleprice = safeParseFloat(wholesaleprice, null);
+        if (retailprice !== undefined) updateData.retailprice = safeParseFloat(retailprice, null);
+        if (unit !== undefined) updateData.unit = unit;
+        if (minimumpurchase !== undefined) updateData.minimumpurchase = safeParseInt(minimumpurchase, 0);
+        if (description !== undefined) updateData.description = description;
+        if (currentQty !== undefined) updateData.currentQty = safeParseInt(currentQty, 0);
+        if (warranty !== undefined) updateData.warranty = (warranty === '' || warranty === null) ? null : warranty;
+        if (addons !== undefined) updateData.addons = parseAddons(addons);
+        if (discount !== undefined) updateData.discount = safeParseFloat(discount, null);
+        if (categoryId !== undefined && categoryId !== null && categoryId.trim() !== '') updateData.categoryId = categoryId;
+        if (variantsData !== undefined) updateData.variants = variantsData;
+
+        const item = await prisma.item.update({
+            where: { id },
+            data: updateData
+        });
+        res.status(200).json({ success: true, item });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: err.message, stack: err.stack });
+    }
+});
+
+// Delete an item (only owner shopkeeper can delete)
+inventoryRouter.delete('/item/:id', shopkeeperMiddleware, async (req, res) => {
+    const { id } = req.params;
+    const shopkeeperid = await req.shopkeeperid;
+    try {
+        const item = await prisma.item.findUnique({ where: { id } });
+        if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+        if (item.shopkeeperId !== shopkeeperid) return res.status(403).json({ success: false, message: 'Not authorized to delete this item' });
+        await prisma.item.delete({ where: { id } });
+        res.status(200).json({ success: true, message: 'Item deleted' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Something went wrong' });
+    }
+});
+
+// Add quantity to item by item id
+inventoryRouter.patch('/item/:id/add-quantity', shopkeeperMiddleware, async (req, res) => {
+    const { quantity } = req.body;
+    const { id } = req.params;
+    try {
+        const item = await prisma.item.update({
+            where: { id },
+            data: {
+                currentQty: { increment: parseInt(quantity) }
+            }
+        });
+        res.status(200).json({ success: true, item });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});
+
+// Get all categories
+inventoryRouter.get('/categories', shopkeeperMiddleware, async (req, res) => {
+    try {
+        const categories = await prisma.category.findMany({
+            select: {
+                id: true,
+                title: true,
+                image: true,
+                createdAt: true,
+                _count: { select: { items: true } }
+            }
+        });
+        const result = categories.map(c => ({
+            id: c.id,
+            title: c.title,
+            image: c.image,
+            createdAt: c.createdAt,
+            itemCount: c._count.items
+        }));
+        res.status(200).json({ success: true, categories: result });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});
+
+// Get all items
+inventoryRouter.get('/items', shopkeeperMiddleware, async (req, res) => {
+    try {
+        const items = await prisma.item.findMany({
+            select: {
+                id: true,
+                title: true,
+                images: true,
+                wholesaleprice: true,
+                retailprice: true,
+                unit: true,
+                description: true,
+                currentQty: true,
+                warranty: true,
+                addons: true,
+                discount: true,
+                categoryId: true,
+                createdAt: true,
+                variants: true
+            }
+        });
+        res.status(200).json({ success: true, items });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});
+
+// Get items under a specific category
+inventoryRouter.get('/category/:categoryId/items', shopkeeperMiddleware, async (req, res) => {
+    const { categoryId } = req.params;
+    try {
+        const items = await prisma.item.findMany({
+            where: { categoryId },
+            select: {
+                id: true,
+                title: true,
+                images: true,
+                wholesaleprice: true,
+                retailprice: true,
+                unit: true,
+                description: true,
+                currentQty: true,
+                warranty: true,
+                addons: true,
+                discount: true,
+                createdAt: true
+            }
+        });
+        res.status(200).json({ success: true, items });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Something went wrong" });
+    }
+});

@@ -1,0 +1,23 @@
+{
+  "body": {
+    "title": "Morang Balu",
+    "description": "wf",
+    "categoryId": "a00d0442-c69d-4b1d-a954-8ad4af17142b",
+    "wholesaleprice": "1234",
+    "retailprice": "8600",
+    "unit": "TROLLEY",
+    "availability": "BOTH",
+    "currentQty": "100",
+    "warranty": "",
+    "addons": "ghv",
+    "discount": "12",
+    "minimumpurchase": "",
+    "variants": "[{\"size\":\"100 Feet ( 1 tralii )\",\"price\":8600,\"wholesaleprice\":0},{\"size\":\"25 Feet\",\"price\":1200,\"wholesaleprice\":0}]"
+  },
+  "files": [
+    {
+      "originalname": "Screenshot 2026-04-12 221759.png",
+      "size": 28376
+    }
+  ]
+}
