@@ -51,6 +51,7 @@ app.get('/', (req, res) => {
 })
 
 
+
 app.use('/api/v1/user', customerRouter)
 app.use('/api/v1/owner', shopkeeperRouter)
 app.use('/api/v1/delivery', deliveryRouter)
