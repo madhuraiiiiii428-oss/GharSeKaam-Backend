@@ -12,6 +12,12 @@ export const authRouter = Router();
 /* --------------------------------------------------
    EMAIL / PASSWORD LOGIN
 -------------------------------------------------- */
+
+const ADMIN_ACCOUNTS = [
+  { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD },
+  { email: process.env.ADMIN_EMAIL_2, password: process.env.ADMIN_PASSWORD_2 },
+].filter(a => a.email && a.password);
+
 authRouter.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -20,11 +26,15 @@ authRouter.post("/login", async (req, res) => {
       return res.status(400).json({ success: false, message: "Email and password are required" });
     }
 
-    // Since we don't have a password field in the DB yet, we just allow login 
-    // for this demo purpose, or check against hardcoded credentials if needed.
-    // In a real scenario, you'd compare the hashed password here.
-    
-    // Mimic the bypass logic
+    // Validate against allowed admin credentials
+    const validAdmin = ADMIN_ACCOUNTS.find(
+      a => a.email === email && a.password === password
+    );
+
+    if (!validAdmin) {
+      return res.status(401).json({ success: false, message: "Invalid email or password" });
+    }
+
     const mockGoogleId = `mock_id_${email}`;
     const mockName = email.split('@')[0];
     const mockProfileImage = "https://github.com/identicons/mock.png";

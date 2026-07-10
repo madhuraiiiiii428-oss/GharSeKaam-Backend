@@ -220,6 +220,14 @@ model LabourService {
   bookings   LabourBooking[]
 }
 
+model Admin {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+}
+
 model LabourBooking {
   id              String        @id @default(uuid())
   name            String
