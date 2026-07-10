@@ -1,32 +1,6 @@
 ﻿# BuildMart-WholeSaler-Retailers-Hubs
 # GharSekroBackend
 
-edit and delete routes make by aadarsh
 
-fhgfjbk
-gfhjlk
-dgvfdhbf
-gfhjfjhgjgtjfgtjtgjgtyjvxcbngngfnhgf
-gtrhtgffdhgcf
-mj,hgbjkhbkjuhbfhfhfhf
-vbfdvbgfhgbhgvjhfgvjh
-hfhfhfhsdfgh;hlgkytrsdghj
-bfbhnfhbhbfhbfbfgnbfhbfhbfhghjgththtfhfhfh
-hbfrhbfhnfhnbfhbfhfhgrfdhgr
-frhfrhfrjhjnfhfgvhnfghn
-bcfbcfdbghjgfhj
-asdfg
-
-fdxhgfhjngjmvfbghnfgmnjghj
-
-
-
-
-
-
-
-
-
-zxfzghg
-
-
+### Backend running on:
+https://gharsekrobackend-dsh5gsfehqbye8b5.centralindia-01.azurewebsites.net/
