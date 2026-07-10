@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../config/prismaConfig.js";
 
 export const deliveryMiddleware = async (req, res, next) => {
+    
     try {
         let token = req.headers['authorization'] || req.headers.authorization;
         if (token && typeof token === 'string' && token.toLowerCase().startsWith('bearer ')) {
