@@ -10,7 +10,6 @@ import http from 'http'
 import { initWebSocket } from './socket.js'
 
 import { customerRouter } from './src/customer/customer.route.js'
-
 import { shopkeeperRouter } from './src/shopkeeper/shopkeeper.route.js'
 import { deliveryRouter } from './src/delivery/delivery.route.js'
 
@@ -20,13 +19,13 @@ const __dirname = path.dirname(__filename)
 // configurations
 const app = express();
 dotenv.config();
-
+app.set('trust proxy', 1);
 
 
 // session
 
 app.use(session({
-    secret: 'prags',
+  secret: process.env.SESSION_SECRET || 'prags',
     resave: false,
     saveUninitialized: true,
     cookie: { secure: process.env.NODE_ENV === 'production' }
@@ -49,7 +48,6 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.get('/', (req, res) => {
     res.send("Buildkart is Healthy")
 })
-
 
 
 app.use('/api/v1/user', customerRouter)
