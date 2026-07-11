@@ -16,6 +16,21 @@ export const shopkeeperMiddleware = async (req, res, next) => {
 
         // MUST match payload
         req.shopkeeperid = decoded.shopkeeperid;
+        req.adminid = decoded.adminid;
+
+        // Super Admin access
+        if (req.adminid) {
+            req.isSuperAdmin = true;
+            // Assign the first shopkeeper to the admin so they can manage the store without errors
+            const primaryShop = await prisma.shopkeeper.findFirst({
+                orderBy: { createdAt: 'asc' }
+            });
+            if (primaryShop) {
+                req.shopkeeperid = primaryShop.id;
+                console.log("Middleware: Super Admin logged in, acting as primary shopkeeper:", primaryShop.id);
+            }
+            return next();
+        }
 
         // Auto-heal: If token only has userid (temporary token) but user is now registered,
         // dynamically resolve the shopkeeper ID from the database
