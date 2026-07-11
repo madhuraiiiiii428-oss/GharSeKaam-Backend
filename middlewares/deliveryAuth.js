@@ -16,6 +16,7 @@ export const deliveryMiddleware = async (req, res, next) => {
             return res.status(401).json({ success: false, message: "Token missing" });
         }
 
+        
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
         req.deliveryguyid = decoded.deliveryguyid;
