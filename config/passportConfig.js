@@ -6,10 +6,10 @@ import { prisma } from './prismaConfig.js';
 env.config();
 
 // Customer strategy
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID 
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET
-const GOOGLE_CALLBACK_USER = process.env.GOOGLE_CALLBACK_USER 
-const GOOGLE_CALLBACK_SHOP = process.env.GOOGLE_CALLBACK_SHOP 
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "dummy_client_id";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "dummy_client_secret";
+const GOOGLE_CALLBACK_USER = process.env.GOOGLE_CALLBACK_USER || "http://localhost:3000/api/v1/user/auth/google/callback";
+const GOOGLE_CALLBACK_SHOP = process.env.GOOGLE_CALLBACK_SHOP || "http://localhost:3000/api/v1/owner/auth/google/callback";
 
 console.log('Passport Google callbacks:', { userCallback: GOOGLE_CALLBACK_USER, shopCallback: GOOGLE_CALLBACK_SHOP });
 
