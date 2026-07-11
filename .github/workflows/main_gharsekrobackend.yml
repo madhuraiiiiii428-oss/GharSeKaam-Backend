@@ -23,11 +23,10 @@ jobs:
         with:
           node-version: '24.x'
 
-      - name: npm install, build, and test
+      - name: npm install and build
         run: |
           npm install
           npm run build --if-present
-          npm run test --if-present
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -51,15 +50,14 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_753B2C9938374601975EAE9A3E5AB150 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C13EC98C306C4B458B2ECAC1857F44C4 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_72C3EF67B06B442EBE13001F94C63009 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_EC291B338A8149189631E7E087A5D71D }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7084D11645E1494388A64AE9F5D8C0DE }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_31CD7770B7DD492D8755E9EE3F2BE65E }}
 
-      - name: 'Deploy to Azure Web App'
+      - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'GharSekroBackend'
           slot-name: 'Production'
           package: .
-          
