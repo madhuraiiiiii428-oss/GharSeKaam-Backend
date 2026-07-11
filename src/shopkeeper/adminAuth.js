@@ -55,6 +55,35 @@ adminAuthRouter.post("/login", async (req, res) => {
 });
 
 /* --------------------------------------------------
+   POST /owner/admin/register  (public registration)
+-------------------------------------------------- */
+adminAuthRouter.post("/register", async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: "name, email and password are required" });
+    }
+
+    const existing = await prisma.admin.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ success: false, message: "Admin with this email already exists" });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    const admin = await prisma.admin.create({ data: { name, email, password: hashed } });
+
+    return res.status(201).json({
+      success: true,
+      message: "Admin registered successfully",
+      admin: { id: admin.id, name: admin.name, email: admin.email },
+    });
+  } catch (err) {
+    console.error("Register admin error:", err);
+    return res.status(500).json({ success: false, message: "Failed to register admin" });
+  }
+});
+
+/* --------------------------------------------------
    POST /owner/admin/create  (protected — existing admin only)
 -------------------------------------------------- */
 adminAuthRouter.post("/create", adminMiddleware, async (req, res) => {
