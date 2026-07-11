@@ -14,12 +14,9 @@
   "scripts": {
     "postinstall": "prisma generate",
     "test": "node index.js",
-<<<<<<< HEAD
-    "start": "nodemon index.js",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
     "create-admin": "node create-admin.js"
-=======
-    "start": "node index.js"
->>>>>>> 53788471e554c8268896d4e90a5cec4ff401aadc
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
