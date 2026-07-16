@@ -8,6 +8,7 @@ export const deliveryMiddleware = async (req, res, next) => {
         if (token && typeof token === 'string' && token.toLowerCase().startsWith('bearer ')) {
             token = token.slice(7).trim();
         }
+        
         if (!token && req.query && req.query.token) token = req.query.token;
         if (!token && req.headers['x-access-token']) token = req.headers['x-access-token'];
         if (!token && req.cookies && req.cookies.token) token = req.cookies.token;
