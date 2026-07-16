@@ -218,7 +218,7 @@ authRouter.get('/google/callback', passport.authenticate('google-customer', { fa
 
 
 authRouter.post("/signup", userMiddleware, async (req, res) => {
-    const { city, state, pincode, flatnumber, landmark, building, street, area, phone, type, shopname, shopnumber, gstnumber, adhaarnumber } = req.body;
+    const { name, city, state, pincode, flatnumber, landmark, building, street, area, phone, type, shopname, shopnumber, gstnumber, adhaarnumber } = req.body;
 
     if (!city || !state || state.toLowerCase() !== 'uttar pradesh' || city.toLowerCase() !== 'gorakhpur') {
         return res.status(400).json({ success: false, message: "Sorry, currently we are not working in your city. We only operate in Gorakhpur." });
@@ -241,12 +241,14 @@ authRouter.post("/signup", userMiddleware, async (req, res) => {
                 include: { houseaddress: true }
             });
 
-            if (phone) {
-                const updated_user = await prisma.user.update({
+            const userUpdate = {};
+            if (phone) userUpdate.phone = phone;
+            if (name) userUpdate.name = name;
+
+            if (Object.keys(userUpdate).length > 0) {
+                await prisma.user.update({
                     where: { googleid: userid },
-                    data: {
-                        phone
-                    }
+                    data: userUpdate
                 });
             }
 
@@ -287,12 +289,17 @@ authRouter.post("/signup", userMiddleware, async (req, res) => {
 
         }
         else {
+            const userUpdateData = {};
+            if (name) userUpdateData.name = name;
+            if (phone) userUpdateData.phone = phone;
+
             const updated_user = await prisma.user.update(
                 {
                     where: {
                         googleid: userid
                     },
                     data: {
+                        ...userUpdateData,
                         customer: {
                             create: {
                                 type,
