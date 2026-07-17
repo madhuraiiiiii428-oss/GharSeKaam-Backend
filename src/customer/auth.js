@@ -95,7 +95,8 @@ authRouter.post('/verify-otp', async (req, res) => {
         }
 
         const customer = await prisma.customer.findUnique({
-            where: { userid: user.googleid }
+            where: { userid: user.googleid },
+            include: { houseaddress: true }
         });
 
         if (customer) {
@@ -113,7 +114,9 @@ authRouter.post('/verify-otp', async (req, res) => {
                 profile: user.profileimage,
                 type: customer.type,
                 gstnumber: customer.GSTnumber || '',
-                shopname: customer.Shopname || ''
+                shopname: customer.Shopname || '',
+                city: customer.houseaddress && customer.houseaddress.length > 0 ? customer.houseaddress[0].city : '',
+                pincode: customer.houseaddress && customer.houseaddress.length > 0 ? customer.houseaddress[0].pincode : ''
             });
         } else {
             const tempToken = jwt.sign(
