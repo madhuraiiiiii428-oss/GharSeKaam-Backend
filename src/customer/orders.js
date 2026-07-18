@@ -105,16 +105,7 @@ customerOrdersRouter.post('/', customerMiddleware, async (req, res) => {
         }
 
         // Calculate default estimated delivery based on hour of order
-        const SAME_DAY_PINCODES = ["273001", "273002", "273003", "273004", "273005", "273008", "273009", "273010", "273011", "273012", "273013", "273014"];
-        let estimatedDelivery = "Within 2 Hours";
-        if (deliveryAddress && SAME_DAY_PINCODES.includes(deliveryAddress.pincode)) {
-            estimatedDelivery = "Same Day Delivery";
-        } else {
-            const currentHour = new Date().getHours();
-            if (currentHour >= 18 || currentHour < 8) { // 6 PM to 8 AM
-                estimatedDelivery = "Tomorrow before 11:00 AM";
-            }
-        }
+        let estimatedDelivery = "Same Day Delivery";
 
         // Generate a random unique order ID (8-character alphanumeric)
         let orderId;
